@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Gestor de Tareas Neón</title>
+  <meta name="theme-color" content="#1a1a1a" />
+
+  <!-- PWA: manifest + iOS meta -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Tareas">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+  <!-- Tailwind CSS for styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Lucide Icons for UI elements -->
+  <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js" defer></script>
+  
+  <!-- SortableJS Library for Drag and Drop -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
+  <style>
+    :root {
+      --bg-color: #121212;
+      --card-bg: #1a1a1a;
+      --text-color: #e0e0e0;
+      --border-color: #333;
+      --neon-yellow: #fff000;
+      --neon-orange: #ff8c00;
+      --neon-green: #00ff00;
+      --neon-magenta: #ff00ff;
+      --neon-red: #ff1111;
+    }
+    body { font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: env(safe-area-inset-top) 1rem 1rem 1rem;}
+    .container { max-width: 1280px; margin: auto; display: grid; gap: 1.5rem; }
+    .card { background-color: var(--card-bg); padding: 1.5rem; border-radius: 1rem; border: 1px solid var(--border-color); transition: box-shadow 0.3s ease-in-out; }
+    .card:hover { box-shadow: 0 0 30px var(--hover-glow-color, rgba(255, 240, 0, 0.4)), 0 0 10px var(--hover-glow-color, rgba(255, 240, 0, 0.2)) inset; }
+    .input, select { border: 1px solid var(--border-color); background: #2a2a2a; color: var(--text-color); border-radius: 0.5rem; padding: 0.5rem 0.75rem; font-size: 14px; outline: none; transition: box-shadow 0.2s, border-color 0.2s; width: 100%; box-sizing: border-box; }
+    .input::placeholder { color: #888; }
+    .input:focus { border-color: var(--neon-yellow); box-shadow: 0 0 10px var(--neon-yellow); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--neon-yellow); background: transparent; color: var(--neon-yellow); border-radius: 0.5rem; padding: 0.5rem 1rem; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; text-shadow: 0 0 5px var(--neon-yellow); }
+    .btn:hover { background: var(--neon-yellow); color: #121212; box-shadow: 0 0 15px var(--neon-yellow); }
+    .btn-icon { padding: 4px; border-radius: 50%; border: none; background: transparent; color: var(--neon-magenta); transition: all 0.2s; cursor: pointer; }
+    .btn-icon:hover { background-color: rgba(255, 0, 255, 0.2); text-shadow: 0 0 10px var(--neon-magenta); }
+    .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; }
+    .kanban-board { display: flex; flex-direction: column; gap: 1.5rem; }
+    @media (min-width: 768px) { .kanban-board { flex-direction: row; } }
+    .kanban-column { flex: 1; transition: all 0.2s; }
+    .kanban-column .sortable-ghost { opacity: 0.4; border-radius: 0.5rem; }
+    .kanban-column .sortable-chosen { cursor: grabbing; }
+    .kanban-task { padding: 0.75rem; border-radius: 0.5rem; cursor: grab; background-color: rgba(42, 42, 42, 0.8); border: 2px solid #444; backdrop-filter: blur(5px); transition: border-color 0.3s; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); display: none; justify-content: center; align-items: center; z-index: 50; }
+    .modal-overlay.active { display: flex; }
+    .modal-content { width: 100%; max-width: 500px; }
+    h2 { font-weight: bold; color: var(--neon-yellow); text-shadow: 0 0 8px var(--neon-yellow); }
+  </style>
+</head>
+<body>
+
+  <div class="container" id="app-container">
+    <!-- Filters -->
+    <div class="card" style="--hover-glow-color: rgba(255, 240, 0, 0.4);">
+      <h2 class="text-xl mb-4">Gestor de Tareas Diarias</h2>
+      <div class="grid-form" id="filter-controls">
+        <select class="input" data-filter="status">
+          <option value="Todos">Todos los estados</option>
+          <option value="Por hacer">Por hacer</option>
+          <option value="En curso">En curso</option>
+          <option value="Hecho">Hecho</option>
+        </select>
+        <input type="text" placeholder="Buscar..." class="input" data-filter="query">
+        <input type="text" placeholder="Etiqueta..." class="input" data-filter="tag">
+        <select class="input" data-filter="priority">
+          <option value="Todos">Todas las prioridades</option>
+          <option value="Alta">Alta+</option>
+          <option value="Media">Media</option>
+          <option value="Baja">Baja</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Add Task Form -->
+    <div class="card" style="--hover-glow-color: rgba(255, 240, 0, 0.4);">
+      <h2 class="text-xl mb-4">Añadir tarea</h2>
+      <form id="task-form">
+        <div class="grid-form">
+          <input type="text" name="title" placeholder="Título" class="input span-4" required>
+          <input type="date" name="dueDate" class="input">
+          <select name="priority" class="input">
+            <option value="Baja">Baja</option>
+            <option value="Media" selected>Media</option>
+            <option value="Alta">Alta</option>
+            <option value="Crítica">Crítica</option>
+          </select>
+          <input type="time" name="startTime" class="input">
+          <input type="time" name="endTime" class="input">
+          <input type="text" name="tags" placeholder="Etiquetas (coma)" class="input lg-span-2">
+          <textarea name="notes" placeholder="Notas" class="input lg-span-2" rows="1"></textarea>
+        </div>
+        <button type="submit" class="btn mt-4">
+          <i data-lucide="plus" class="w-4 h-4 mr-1"></i> Añadir
+        </button>
+      </form>
+    </div>
+
+    <!-- Kanban Board -->
+    <div class="kanban-board" id="kanban-board"></div>
+
+    <!-- Summary & Pomodoro -->
+    <div class="grid-form">
+      <div class="card span-2" id="summary-card" style="--hover-glow-color: rgba(255, 240, 0, 0.4);"></div>
+      <div class="card span-2" id="pomodoro-card" style="--hover-glow-color: rgba(255, 240, 0, 0.4);"></div>
+    </div>
+
+    <footer class="text-center text-xs text-gray-400 py-4">
+      Datos guardados en este dispositivo (localStorage).
+    </footer>
+  </div>
+
+  <!-- Edit Modal -->
+  <div class="modal-overlay" id="edit-modal" aria-hidden="true">
+    <div class="card modal-content" style="--hover-glow-color: rgba(255, 240, 0, 0.4);">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl">Editar Tarea</h2>
+        <button class="btn-icon" id="close-modal-btn" aria-label="Cerrar">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <form id="edit-task-form" class="space-y-4">
+        <input type="hidden" name="id">
+        <input type="text" name="title" class="input" placeholder="Título" required>
+        <textarea name="notes" class="input" placeholder="Notas" rows="3"></textarea>
+        <div class="grid grid-cols-2 gap-4">
+          <input type="date" name="dueDate" class="input">
+          <select name="priority" class="input">
+            <option value="Baja">Baja</option>
+            <option value="Media">Media</option>
+            <option value="Alta">Alta</option>
+            <option value="Crítica">Crítica</option>
+          </select>
+          <input type="time" name="startTime" class="input">
+          <input type="time" name="endTime" class="input">
+        </div>
+        <input type="text" name="tags" class="input" placeholder="Etiquetas (coma)">
+        <div class="flex justify-end gap-2">
+          <button type="button" class="btn" id="cancel-edit-btn">Cancelar</button>
+          <button type="submit" class="btn">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Registrar Service Worker (requerido para PWA/offline en iOS). Scope relativo para GitHub Pages.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(console.error);
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      let tasks = JSON.parse(localStorage.getItem('tasks-v2') || '[]');
+      let filters = { status: 'Todos', query: '', tag: '', priority: 'Todos' };
+      let pomodoroState = { timerId: null, timeRemaining: 25 * 60, isRunning: false };
+
+      const save = () => { localStorage.setItem('tasks-v2', JSON.stringify(tasks)); render(); };
+
+      const STATUSES = ["Por hacer", "En curso", "Hecho"];
+      const STATUS_DETAILS = {
+        "Por hacer": { titleColor: 'text-yellow-300', cardGlow: 'box-shadow: 0 0 20px rgba(255, 240, 0, 0.25);', taskBorder: 'border-yellow-400' },
+        "En curso": { titleColor: 'text-orange-400', cardGlow: 'box-shadow: 0 0 20px rgba(255, 140, 0, 0.25);', taskBorder: 'border-orange-400' },
+        "Hecho": { titleColor: 'text-green-400', cardGlow: 'box-shadow: 0 0 20px rgba(0, 255, 0, 0.25);', taskBorder: 'border-green-400' },
+      };
+      const PRIORITIES = {
+        Baja: { label: 'Baja', style: 'background-color: rgba(255, 240, 0, 0.1); color: var(--neon-yellow); border: 1px solid var(--neon-yellow);' },
+        Media: { label: 'Media', style: 'background-color: rgba(0, 255, 0, 0.1); color: var(--neon-lime); border: 1px solid var(--neon-lime);' },
+        Alta: { label: 'Alta', style: 'background-color: rgba(255, 140, 0, 0.1); color: var(--neon-orange); border: 1px solid var(--neon-orange);' },
+        Crítica: { label: 'Crítica', style: 'background-color: rgba(255, 17, 17, 0.1); color: var(--neon-red); border: 1px solid var(--neon-red);' }
+      };
+
+      const getFilteredTasks = () => tasks.filter(t => {
+        const statusMatch = filters.status === 'Todos' || t.status === filters.status;
+        const queryLower = filters.query.toLowerCase();
+        const queryMatch = !filters.query || t.title.toLowerCase().includes(queryLower) || (t.notes || '').toLowerCase().includes(queryLower);
+        const tagMatch = !filters.tag || (t.tags || []).join(' ').toLowerCase().includes(filters.tag.toLowerCase());
+        const priorityMatch = filters.priority === 'Todos' || (filters.priority === 'Alta' ? ['Alta', 'Crítica'].includes(t.priority) : t.priority === filters.priority);
+        return statusMatch && queryMatch && tagMatch && priorityMatch;
+      });
+
+      const renderKanbanTask = (task) => {
+        const priorityPill = PRIORITIES[task.priority] || PRIORITIES.Media;
+        return `
+          <div class="kanban-task" data-task-id="${task.id}">
+            <p class="font-bold text-sm text-gray-100">${task.title}</p>
+            ${task.notes ? `<p class="text-xs text-gray-400 mt-2 line-clamp-2"><i data-lucide="file-text" class="inline-block w-3 h-3 mr-1"></i>${task.notes}</p>` : ''}
+            <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 mt-2">
+              ${task.dueDate ? `<div class="flex items-center"><i data-lucide="calendar" class="w-3 h-3 mr-1"></i><span>${task.dueDate}</span></div>` : ''}
+              ${task.startTime || task.endTime ? `<div class="flex items-center"><i data-lucide="clock" class="w-3 h-3 mr-1"></i><span>${task.startTime || ''} - ${task.endTime || ''}</span></div>` : ''}
+            </div>
+            <div class="flex justify-between items-center mt-3 pt-2 border-t border-gray-700">
+              <span class="pill" style="${priorityPill.style}">${priorityPill.label}</span>
+              <div class="flex gap-1">
+                <button class="btn-icon" data-action="edit" data-task-id="${task.id}" aria-label="Editar"><i data-lucide="edit" class="w-3.5 h-3.5 pointer-events-none"></i></button>
+                <button class="btn-icon" data-action="delete" data-task-id="${task.id}" aria-label="Eliminar"><i data-lucide="trash-2" class="w-3.5 h-3.5 pointer-events-none"></i></button>
+              </div>
+            </div>
+          </div>
+        `;
+      };
+
+      const renderKanbanBoard = () => {
+        const filteredTasks = getFilteredTasks();
+        const board = document.getElementById('kanban-board');
+        if (filteredTasks.length === 0 && tasks.length === 0) { board.innerHTML = `<div class="text-center w-full py-10 text-gray-500">Aún no hay tareas. ¡Añade una para empezar!</div>`; return; }
+        if (filteredTasks.length === 0 && (filters.query || filters.tag)) { board.innerHTML = `<div class="text-center w-full py-10 text-gray-500">No hay tareas que coincidan con los filtros.</div>`; return; }
+
+        const STATUSES = ["Por hacer", "En curso", "Hecho"];
+        const STATUS_DETAILS = {
+          "Por hacer": { titleColor: 'text-yellow-300', cardGlow: 'box-shadow: 0 0 20px rgba(255, 240, 0, 0.25);' },
+          "En curso": { titleColor: 'text-orange-400', cardGlow: 'box-shadow: 0 0 20px rgba(255, 140, 0, 0.25);' },
+          "Hecho": { titleColor: 'text-green-400', cardGlow: 'box-shadow: 0 0 20px rgba(0, 255, 0, 0.25);' }
+        };
+
+        const columns = STATUSES.map(status => {
+          const tasksInColumn = filteredTasks.filter(t => t.status === status);
+          const { titleColor, cardGlow } = STATUS_DETAILS[status] || {};
+          return `
+            <div class="card kanban-column" style="${cardGlow}">
+              <h3 class="font-bold mb-3 text-center ${titleColor}" style="text-shadow: 0 0 8px;">${status} <span class="text-xs bg-gray-700 text-gray-300 font-semibold rounded-full px-2 py-0.5">${tasksInColumn.length}</span></h3>
+              <div class="space-y-3 min-h-[100px]" data-column-body="true" data-status="${status}">
+                ${tasksInColumn.map(renderKanbanTask).join('')}
+              </div>
+            </div>
+          `;
+        }).join('');
+        board.innerHTML = columns;
+      };
+
+      const renderSummary = () => {
+        const today = new Date().toISOString().slice(0, 10);
+        const doneToday = tasks.filter(t => t.status === 'Hecho' && (t.completedAt || '').slice(0, 10) === today).length;
+        const pending = tasks.filter(t => t.status !== 'Hecho').length;
+        document.getElementById('summary-card').innerHTML = `
+          <h2 class="text-xl mb-4">Resumen diario</h2>
+          <div class="flex flex-wrap gap-2 text-gray-300">
+            <span>Hechas hoy: <b class="text-green-400">${doneToday}</b></span>
+            <span>Pendientes: <b class="text-yellow-400">${pending}</b></span>
+          </div>
+        `;
+      };
+
+      const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+
+      const renderPomodoro = () => {
+        const card = document.getElementById('pomodoro-card');
+        card.innerHTML = `
+          <div class="text-center">
+            <div id="pomodoro-time" class="text-7xl font-bold text-yellow-300" style="text-shadow: 0 0 10px var(--neon-yellow);">
+                ${formatTime(pomodoroState.timeRemaining)}
+            </div>
+            <div class="flex justify-center gap-2 mt-4">
+                <button class="btn" id="pomodoro-start-pause">${pomodoroState.isRunning ? 'Pausar' : 'Iniciar'}</button>
+                <button class="btn" id="pomodoro-reset">Reiniciar</button>
+            </div>
+          </div>
+        `;
+      };
+      
+      const initDragAndDrop = () => {
+          const columns = document.querySelectorAll('[data-column-body]');
+          columns.forEach(column => {
+              new Sortable(column, {
+                  group: 'kanban',
+                  animation: 150,
+                  ghostClass: 'sortable-ghost',
+                  chosenClass: 'sortable-chosen',
+                  onEnd: (evt) => {
+                      const taskId = evt.item.dataset.taskId;
+                      const newStatus = evt.to.dataset.status;
+                      const task = tasks.find(t => t.id === taskId);
+                      if (task && task.status !== newStatus) {
+                          task.status = newStatus;
+                          if (task.status == 'Hecho') task.completedAt = new Date().toISOString();
+                          localStorage.setItem('tasks-v2', JSON.stringify(tasks));
+                          renderSummary();
+                      }
+                  }
+              });
+          });
+      };
+
+      const render = () => {
+        renderKanbanBoard();
+        renderSummary();
+        renderPomodoro();
+        initDragAndDrop();
+        if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+      };
+
+      document.getElementById('task-form').addEventListener('submit', e => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const newTask = {
+          id: `task-${Date.now()}`,
+          title: formData.get('title'),
+          dueDate: formData.get('dueDate'),
+          startTime: formData.get('startTime'),
+          endTime: formData.get('endTime'),
+          priority: formData.get('priority'),
+          tags: (formData.get('tags') || '').split(',').map(t => t.trim()).filter(Boolean),
+          notes: formData.get('notes'),
+          status: 'Por hacer',
+          createdAt: new Date().toISOString()
+        };
+        tasks.unshift(newTask);
+        e.target.reset();
+        save();
+      });
+
+      document.getElementById('filter-controls').addEventListener('input', e => {
+        if (e.target.dataset.filter) { filters[e.target.dataset.filter] = e.target.value; render(); }
+      });
+      
+      const modal = document.getElementById('edit-modal');
+      const editForm = document.getElementById('edit-task-form');
+
+      document.getElementById('kanban-board').addEventListener('click', e => {
+        const button = e.target.closest('[data-action]');
+        if (!button) return;
+        const taskId = button.dataset.taskId;
+        const action = button.dataset.action;
+        if (action === 'delete') {
+          tasks = tasks.filter(t => t.id != taskId);
+          save();
+        } else if (action === 'edit') {
+          const task = tasks.find(t => t.id == taskId);
+          if (task) {
+            editForm.elements['id'].value = task.id;
+            editForm.elements['title'].value = task.title;
+            editForm.elements['notes'].value = task.notes || '';
+            editForm.elements['dueDate'].value = task.dueDate || '';
+            editForm.elements['startTime'].value = task.startTime || '';
+            editForm.elements['endTime'].value = task.endTime || '';
+            editForm.elements['priority'].value = task.priority;
+            editForm.elements['tags'].value = (task.tags || []).join(', ');
+            modal.classList.add('active');
+            modal.setAttribute('aria-hidden', 'false');
+          }
+        }
+      });
+      
+      editForm.addEventListener('submit', e => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const taskId = formData.get('id');
+        const idx = tasks.findIndex(t => t.id == taskId);
+        if (idx > -1) {
+            tasks[idx] = {
+                ...tasks[idx],
+                title: formData.get('title'),
+                notes: formData.get('notes'),
+                dueDate: formData.get('dueDate'),
+                priority: formData.get('priority'),
+                startTime: formData.get('startTime'),
+                endTime: formData.get('endTime'),
+                tags: (formData.get('tags') || '').split(',').map(t => t.trim()).filter(Boolean),
+            };
+            save(); closeModal();
+        }
+      });
+
+      const closeModal = () => { modal.classList.remove('active'); modal.setAttribute('aria-hidden', 'true'); };
+      document.getElementById('close-modal-btn').addEventListener('click', closeModal);
+      document.getElementById('cancel-edit-btn').addEventListener('click', closeModal);
+      modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+      // Pomodoro
+      const pomodoroTick = () => {
+        pomodoroState.timeRemaining--;
+        const t = document.getElementById('pomodoro-time');
+        if (t) t.textContent = formatTime(pomodoroState.timeRemaining);
+        if (pomodoroState.timeRemaining <= 0) {
+          clearInterval(pomodoroState.timerId);
+          pomodoroState.isRunning = false;
+          pomodoroState.timeRemaining = 25 * 60;
+          renderPomodoro();
+        }
+      };
+
+      document.getElementById('pomodoro-card').addEventListener('click', e => {
+        const id = e.target.id;
+        if (id === 'pomodoro-start-pause') {
+          pomodoroState.isRunning = !pomodoroState.isRunning;
+          if (pomodoroState.isRunning) {
+            pomodoroState.timerId = setInterval(pomodoroTick, 1000);
+            e.target.textContent = 'Pausar';
+          } else {
+            clearInterval(pomodoroState.timerId);
+            e.target.textContent = 'Iniciar';
+          }
+        } else if (id === 'pomodoro-reset') {
+          clearInterval(pomodoroState.timerId);
+          pomodoroState.isRunning = false;
+          pomodoroState.timeRemaining = 25 * 60;
+          renderPomodoro();
+        }
+      });
+
+      render();
+    });
+  </script>
+</body>
+</html>
